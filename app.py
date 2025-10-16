@@ -1,3 +1,4 @@
+from sys import exception
 from numpy import partition
 import ollama
 from pandas.core import base
@@ -12,6 +13,8 @@ import asyncio
 import threading
 import chromadb.api
 import pdfplumber
+from multiprocessing import Pool,freeze_support
+import math
 
 baseUrl = "https://psxterminal.com"
 pdfBaseUrl = "https://dps.psx.com.pk"
@@ -21,9 +24,13 @@ tickerDetail = []
 
 client = chromadb.PersistentClient()
 client.clear_system_cache()
-client.delete_collection(name='my_db')
-collection = client.get_or_create_collection("my_db")
+try:
 
+    client.delete_collection(name='my_db')
+except Exception as e:
+    print(e)
+
+collection = client.get_or_create_collection("my_db")
 
 def makeMarketRequest():
     for symbol in tickers_symbol:
@@ -116,7 +123,7 @@ def summary_ai_assistance(data):
     
     response = ollama.chat(
        # model="gpt-oss:20b",
-        model = "qwen3-coder:latest",
+        model = "qwen3-coder:480b-cloud",
         messages=[
             {"role": "system", "content": system_prompt.strip()},
             {"role": "user", "content": full_prompt.strip()}
@@ -233,13 +240,22 @@ def summarize_table(table):
     print(response['message']['content'])
     return response['message']['content']
 
-def summarize_ticker_detail(ticker_detail):
+def summarize_ticker_detail(ticker_detail,model_name):
     system_prompt = (
         """
-        You are a professional financial analyst trained to convert structured or textual financial data into dense, semantically rich summaries for retrieval systems.
-        Given the following financial report, write a factually complete, context-rich summary in natural language that captures all quantitative and qualitative insights — including financial performance, ratios, year-over-year changes, management outlook, and risk factors.
-        The output must be embedding-friendly: avoid bullet points, headings, or formatting.
-        Output only the summary text.
+        You are a professional financial analyst specialized in transforming structured or unstructured financial reports into dense, semantically rich summaries suitable for embedding and retrieval systems.
+
+Given a portion (chunk) of a financial report, produce a factually accurate and contextually complete natural-language summary. Your summary should integrate all quantitative and qualitative information present in the text, including but not limited to:
+
+- Revenue, profit, and cash flow performance
+- Key financial ratios and year-over-year changes
+- Segment or regional performance highlights
+- Management commentary, strategic outlook, and guidance
+- Notable risks, uncertainties, or auditor comments
+
+Write in continuous prose (no bullet points, headings, or formatting). The output should read as a cohesive paragraph that preserves both numeric and contextual details for downstream semantic search and synthesis.
+
+Output only the summary text, nothing else.
 
         """
     )
@@ -249,11 +265,11 @@ def summarize_ticker_detail(ticker_detail):
     {ticker_detail}
 
     Question:
-    {"Summarize the financial report"}
+    {"Summarize this financial report chunk as described in the system prompt."}
     """
     response = ollama.chat(
        # model="gpt-oss:20b",
-        model = "kimi-k2:1t-cloud",
+        model = model_name,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": full_prompt}
@@ -262,13 +278,39 @@ def summarize_ticker_detail(ticker_detail):
     print(response['message']['content'])
     return response['message']['content']
 
+def worker (model_name,sub_chunk):
+        results = []
+        for text in sub_chunk:
+            result = summarize_ticker_detail(text,model_name)
+            print(result)
+            results.append(result)
+        return results
 
-def summarize_chunk_text(chunks_of_text):
-    list_of_summarize = []
-    for index , chunks in enumerate(chunks_of_text):
-        result = summarize_ticker_detail(chunks)
-        list_of_summarize.append(result)
-    return list_of_summarize
+def summarize_chunk_text(chunks_of_text,model_name):
+    num_parts = len(model_name)
+    print(len(model_name))
+    chunk_size = math.ceil(len(chunks_of_text)/num_parts)
+    print(chunk_size)
+
+    divide_chunks = [
+        chunks_of_text[i:i + chunk_size] for i in range(0, len(chunks_of_text), chunk_size)
+    ]
+    print(len(divide_chunks))
+    with Pool(processes=num_parts) as pool:
+        async_result = [
+            pool.apply_async(worker,(model_name[i],divide_chunks[i]))
+            for i in range(len(divide_chunks))
+        ]
+        #wait(async_result)
+        results = [r.get() for r in async_result]
+
+    all_summaries = [item for sublist in results for item in sublist]
+    return all_summaries
+    # list_of_summarize = []
+    # for index , chunks in enumerate(chunks_of_text):
+    #     result = summarize_ticker_detail(chunks)
+    #     list_of_summarize.append(result)
+    # return list_of_summarize
 
 def summarize_chunk_text_01(chunks_of_text):
     list_of_summarize = []
@@ -348,7 +390,8 @@ async def getPdfFiles(ticker,session_data):
     print(f"chunks of text length {len(chunks_of_text)}")
     chunks_of_text_01 = chunks_text(text="\n\n".join(structured_parts))
     print(f"Chunks of length {len(chunks_of_text_01)}")
-    result = summarize_chunk_text(chunks_of_text=chunks_of_text)
+    result = summarize_chunk_text(chunks_of_text=chunks_of_text,model_name=
+    ['qwen3-coder:480b-cloud','gpt-oss:20b-cloud','deepseek-v3.1:671b-cloud','kimi-k2:1t-cloud'])
     result_1 = summarize_chunk_text_01(chunks_of_text=chunks_of_text_01)
     print(f"summarize of text length {len(result)}")
     embedd_text(text=result + result_1)
@@ -486,4 +529,5 @@ def root():
 
 if __name__ == '__main__':
 
+    freeze_support()
     root()
