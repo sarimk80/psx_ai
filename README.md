@@ -11,6 +11,9 @@ Built with **Streamlit**, **Ollama**, and **ChromaDB**, it enables users to:
 
 ---
 
+https://github.com/user-attachments/assets/9279a6db-db31-4f86-bb93-d08adc48dfa6
+
+
 ## 🚀 Features
 
 ✅ **Real-Time Market Data**  
@@ -146,10 +149,6 @@ collection = client.get_or_create_collection("my_db")
 
 <img width="1440" height="900" alt="Screenshot 2025-10-20 at 10 09 28 AM" src="https://github.com/user-attachments/assets/2213d0db-9033-4a3b-bb77-3329ae0302df" />
 <img width="1440" height="900" alt="Screenshot 2025-10-20 at 10 09 38 AM" src="https://github.com/user-attachments/assets/e04e075c-7635-4279-b50d-1a38f86af7e2" />
-
-
-
-https://github.com/user-attachments/assets/9279a6db-db31-4f86-bb93-d08adc48dfa6
 
 
 
