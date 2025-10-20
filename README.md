@@ -144,6 +144,8 @@ collection = client.get_or_create_collection("my_db")
 
 ## 🖼️ UI Preview
 
+<img width="1440" height="900" alt="Screenshot 2025-10-20 at 10 09 28 AM" src="https://github.com/user-attachments/assets/2213d0db-9033-4a3b-bb77-3329ae0302df" />
+<img width="1440" height="900" alt="Screenshot 2025-10-20 at 10 09 38 AM" src="https://github.com/user-attachments/assets/e04e075c-7635-4279-b50d-1a38f86af7e2" />
 
 
 
