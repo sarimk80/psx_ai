@@ -149,3 +149,9 @@ collection = client.get_or_create_collection("my_db")
 
 
 
+https://github.com/user-attachments/assets/9279a6db-db31-4f86-bb93-d08adc48dfa6
+
+
+
+
+
