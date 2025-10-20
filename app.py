@@ -22,15 +22,8 @@ pdf_links : list[str] = []
 tickers_symbol =  ["KSE100","ALLSHR","PSXDIV20","KSE30"]
 tickerDetail = []
 
-client = chromadb.PersistentClient()
-client.clear_system_cache()
-try:
+CHROMA_COLLECTION_NAME = "my_db"
 
-    client.delete_collection(name='my_db')
-except Exception as e:
-    print(e)
-
-collection = client.get_or_create_collection("my_db")
 
 def makeMarketRequest():
     for symbol in tickers_symbol:
@@ -167,7 +160,7 @@ Follow these rules carefully:
     print(response['message']['content'])
     return response['message']['content']
 
-def embedd_prompt(prompt):
+def embedd_prompt(prompt,collection):
     prompt_embedd = ollama.embed(
         model='embeddinggemma:latest',
         input= prompt
@@ -190,7 +183,7 @@ def embedd_prompt(prompt):
         data = None  # or raise an error/handle missing data
         return ''
 
-def embedd_text(text):
+def embedd_text(text,collection):
     
     for i, d in enumerate(text):
         embedd_response = ollama.embed(
@@ -240,7 +233,7 @@ def summarize_table(table):
     print(response['message']['content'])
     return response['message']['content']
 
-def summarize_ticker_detail(ticker_detail,model_name):
+def summarize_ticker_detail(ticker_detail,model_name,ticker_symbol):
     system_prompt = (
         """
         You are a professional financial analyst specialized in transforming structured or unstructured financial reports into dense, semantically rich summaries suitable for embedding and retrieval systems.
@@ -262,7 +255,7 @@ Output only the summary text, nothing else.
 
     full_prompt = f"""
     Context:
-    {ticker_detail}
+    {ticker_symbol} {ticker_detail}
 
     Question:
     {"Summarize this financial report chunk as described in the system prompt."}
@@ -278,15 +271,15 @@ Output only the summary text, nothing else.
     print(response['message']['content'])
     return response['message']['content']
 
-def worker (model_name,sub_chunk):
+def worker (model_name,sub_chunk,ticker_symbol):
         results = []
         for text in sub_chunk:
-            result = summarize_ticker_detail(text,model_name)
+            result = summarize_ticker_detail(text,model_name,ticker_symbol)
             print(result)
             results.append(result)
         return results
 
-def summarize_chunk_text(chunks_of_text,model_name):
+def summarize_chunk_text(chunks_of_text,model_name,tickers_symbol):
     num_parts = len(model_name)
     print(len(model_name))
     chunk_size = math.ceil(len(chunks_of_text)/num_parts)
@@ -298,19 +291,13 @@ def summarize_chunk_text(chunks_of_text,model_name):
     print(len(divide_chunks))
     with Pool(processes=num_parts) as pool:
         async_result = [
-            pool.apply_async(worker,(model_name[i],divide_chunks[i]))
+            pool.apply_async(worker,(model_name[i],divide_chunks[i],tickers_symbol))
             for i in range(len(divide_chunks))
         ]
-        #wait(async_result)
         results = [r.get() for r in async_result]
 
     all_summaries = [item for sublist in results for item in sublist]
     return all_summaries
-    # list_of_summarize = []
-    # for index , chunks in enumerate(chunks_of_text):
-    #     result = summarize_ticker_detail(chunks)
-    #     list_of_summarize.append(result)
-    # return list_of_summarize
 
 def summarize_chunk_text_01(chunks_of_text):
     list_of_summarize = []
@@ -319,10 +306,8 @@ def summarize_chunk_text_01(chunks_of_text):
         list_of_summarize.append(result)
     return list_of_summarize
 
-#https://dps.psx.com.pk/download/document/258577.pdf
-#https://dps.psx.com.pk/download/document/257240.pdf
 
-async def getPdfFiles(ticker,session_data):
+async def getPdfFiles(ticker,session_data,collection):
     r_5 = requests.get(f"{pdfBaseUrl}/company/{ticker}")
     text = ""
     all_text = ""
@@ -391,17 +376,17 @@ async def getPdfFiles(ticker,session_data):
     chunks_of_text_01 = chunks_text(text="\n\n".join(structured_parts))
     print(f"Chunks of length {len(chunks_of_text_01)}")
     result = summarize_chunk_text(chunks_of_text=chunks_of_text,model_name=
-    ['qwen3-coder:480b-cloud','gpt-oss:20b-cloud','deepseek-v3.1:671b-cloud','kimi-k2:1t-cloud'])
+    ['qwen3-coder:480b-cloud','gpt-oss:20b-cloud','deepseek-v3.1:671b-cloud','kimi-k2:1t-cloud'],tickers_symbol=ticker)
     result_1 = summarize_chunk_text_01(chunks_of_text=chunks_of_text_01)
     print(f"summarize of text length {len(result)}")
-    embedd_text(text=result + result_1)
+    embedd_text(text=result + result_1,collection=collection)
     print("embedding")
     #embedd_prompt()
     
 
 #st.session_state.fundamentals + st.session_state.companies + st.session_state.dividend + st.session_state.kline
 
-def colums_1():
+def colums_1(collection):
     r = requests.get(f"{baseUrl}/api/symbols")
     symbols = Symbols.model_validate_json(r.text)
 
@@ -422,23 +407,23 @@ def colums_1():
             "kline": st.session_state.get("kline")
         }
         if "pdf_thread" not in st.session_state or not st.session_state.pdf_thread.is_alive():
-            thread = threading.Thread(target=lambda:asyncio.run(getPdfFiles(options,session_copy)))
+            thread = threading.Thread(target=lambda:asyncio.run(getPdfFiles(options,session_copy,collection)))
             thread.start()
             st.session_state.pdf_thread = thread
             st.info("Downaloading pdf files")
         else:
             st.info("Files downloaded")
 
-        input_outout_ui()
+        input_outout_ui(collection)
         
         
 @st.fragment
-def input_outout_ui():
+def input_outout_ui(collection):
     if prompt := st.chat_input("Enter your question?"):
         st.chat_message("user").markdown(prompt)
         
 
-        response = embedd_prompt(prompt)
+        response = embedd_prompt(prompt,collection)
 
         
         with st.chat_message("assistant"):
@@ -470,6 +455,7 @@ def colums_2():
             value = st.session_state.fundamentals.data.price,
             delta = f"{st.session_state.fundamentals.data.changePercent:,.4f}%"
             )
+        st.text(st.session_state.companies.data.businessDescription)
         col1, col2 ,col3 = st.columns(3)
         col1.metric(
             label="Shares",
@@ -485,6 +471,10 @@ def colums_2():
             delta= f"{st.session_state.companies.data.financialStats.freeFloatPercent.numeric:,.2f}",
             delta_color='off'
         )
+        key_persons = [companies.model_dump() for companies in st.session_state.companies.data.keyPeople]
+        if key_persons:
+                df = pd.DataFrame(key_persons)
+                st.table(df)
             
     if "kline" in st.session_state:
         records = [kline.model_dump() for kline in st.session_state.kline.data]
@@ -518,16 +508,36 @@ def colums_2():
                 df = pd.DataFrame(dividends)
                 st.table(df)
 
-def root():
+def root(collection):
     st.set_page_config(page_title="PSX AI Assistance",layout="wide")
     makeMarketRequest()
     col1 , col2 = st.columns([0.4,0.6])
     with col1:
-        colums_1()
+        colums_1(collection)
     with col2:
         colums_2()
 
+@st.cache_resource
+def get_chromddb():
+    # Initialize persistent client (you can specify a path if needed)
+    client = chromadb.PersistentClient(path="chroma_db")
+
+    # Optional: check if the collection already exists
+    existing_collections = [c.name for c in client.list_collections()]
+
+    if CHROMA_COLLECTION_NAME in existing_collections:
+        print(f"Deleting existing collection: {CHROMA_COLLECTION_NAME}")
+        client.delete_collection(CHROMA_COLLECTION_NAME)
+
+    # Create a fresh collection
+    collection = client.create_collection(CHROMA_COLLECTION_NAME)
+
+    print(f"✅ Collection '{CHROMA_COLLECTION_NAME}' created successfully.")
+    return collection
+
 if __name__ == '__main__':
 
+    collection = get_chromddb()
+
     freeze_support()
-    root()
+    root(collection)
