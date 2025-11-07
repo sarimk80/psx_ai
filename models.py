@@ -114,8 +114,8 @@ class TickerDetailModel(BaseModel):
     value: float
     high: float
     low: float
-    bid: int
-    ask: int
+    bid: float
+    ask: float
     bidVol: int
     askVol: int
     timestamp: int

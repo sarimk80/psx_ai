@@ -2,6 +2,7 @@ from sys import exception
 from numpy import partition
 import ollama
 from pandas.core import base
+from plotly.graph_objs import XAxis
 import requests
 import streamlit as st
 from models import Symbols,Companies,Fundamentals,Dividend,KLine,TickerDetail
@@ -35,11 +36,28 @@ def makeApiRequest(ticker):
     r_1 = requests.get(f"{baseUrl}/api/companies/{ticker}")
     r_2 = requests.get(f"{baseUrl}/api/fundamentals/{ticker}")
     r_3 = requests.get(f"{baseUrl}/api/dividends/{ticker}")
+    r_6 = requests.get(f"{baseUrl}/api/ticks/{'REG'}/{ticker}")
+    getPdfLinks(ticker=ticker)
+
+    r_7 = requests.get(f"{baseUrl}/api/klines/{ticker}/{"1m"}")
+    r_8 = requests.get(f"{baseUrl}/api/klines/{ticker}/{"5m"}")
+    r_9 = requests.get(f"{baseUrl}/api/klines/{ticker}/{"15m"}")
+    r_10 = requests.get(f"{baseUrl}/api/klines/{ticker}/{"1h"}")
+    r_11 = requests.get(f"{baseUrl}/api/klines/{ticker}/{"4h"}")
     r_4 = requests.get(f"{baseUrl}/api/klines/{ticker}/{"1d"}")
+
 
     st.session_state.companies = Companies.model_validate_json(r_1.text)
     st.session_state.fundamentals = Fundamentals.model_validate_json(r_2.text)
     st.session_state.dividend = Dividend.model_validate_json(r_3.text)
+   
+    st.session_state.ticks = TickerDetail.model_validate_json(r_6.text)
+
+    st.session_state.kline_1m = KLine.model_validate_json(r_7.text)
+    st.session_state.kline_5m = KLine.model_validate_json(r_8.text)
+    st.session_state.kline_15m = KLine.model_validate_json(r_9.text)
+    st.session_state.kline_1h = KLine.model_validate_json(r_10.text)
+    st.session_state.kline_4h = KLine.model_validate_json(r_11.text)
     st.session_state.kline = KLine.model_validate_json(r_4.text)
 
 
@@ -306,18 +324,28 @@ def summarize_chunk_text_01(chunks_of_text):
         list_of_summarize.append(result)
     return list_of_summarize
 
-
-async def getPdfFiles(ticker,session_data,collection):
+def getPdfLinks(ticker):
     r_5 = requests.get(f"{pdfBaseUrl}/company/{ticker}")
-    text = ""
-    all_text = ""
-    all_tables = []
 
     soup = BeautifulSoup(r_5.text,"html.parser")
     for i,link in enumerate(soup.find_all('a')):
         if str(link.get('href')).endswith('.pdf'):
             pdfDownloadUrl = pdfBaseUrl + str(link.get('href'))
             pdf_links.append(pdfDownloadUrl)
+
+
+async def getPdfFiles(ticker,session_data,collection):
+    #getPdfLinks(ticker=ticker)
+    # r_5 = requests.get(f"{pdfBaseUrl}/company/{ticker}")
+    text = ""
+    all_text = ""
+    all_tables = []
+
+    # soup = BeautifulSoup(r_5.text,"html.parser")
+    # for i,link in enumerate(soup.find_all('a')):
+    #     if str(link.get('href')).endswith('.pdf'):
+    #         pdfDownloadUrl = pdfBaseUrl + str(link.get('href'))
+    #         pdf_links.append(pdfDownloadUrl)
 
     limited_pdf_links : list[str] = pdf_links[:2]
 
@@ -387,35 +415,93 @@ async def getPdfFiles(ticker,session_data,collection):
 #st.session_state.fundamentals + st.session_state.companies + st.session_state.dividend + st.session_state.kline
 
 def colums_1(collection):
+
+    st.sidebar.title("Welcome")
+    st.sidebar.write("Hello")
+
     r = requests.get(f"{baseUrl}/api/symbols")
-    symbols = Symbols.model_validate_json(r.text)
+    
 
-    options = st.selectbox("Select the symbol",
-    (symbols.data),
-    index=None,
-    placeholder="Select the symbol for AI assistance")
+    with st.sidebar:
+        symbols = Symbols.model_validate_json(r.text)
 
-    st.session_state.options = options
+        options = st.selectbox("Select the symbol",
+        (symbols.data),
+        index=None,
+        placeholder="Select the symbol for AI assistance")
+
+        st.session_state.options = options
+        
 
     if options:
 
         makeApiRequest(options)
-        session_copy = {
-            "fundamentals": st.session_state.get("fundamentals"),
-            "companies": st.session_state.get("companies"),
-            "dividend": st.session_state.get("dividend"),
-            "kline": st.session_state.get("kline")
-        }
-        if "pdf_thread" not in st.session_state or not st.session_state.pdf_thread.is_alive():
-            thread = threading.Thread(target=lambda:asyncio.run(getPdfFiles(options,session_copy,collection)))
-            thread.start()
-            st.session_state.pdf_thread = thread
-            st.info("Downaloading pdf files")
-        else:
-            st.info("Files downloaded")
+    #     session_copy = {
+    #         "fundamentals": st.session_state.get("fundamentals"),
+    #         "companies": st.session_state.get("companies"),
+    #         "dividend": st.session_state.get("dividend"),
+    #         "kline": st.session_state.get("kline")
+    #     }
+    #     if "pdf_thread" not in st.session_state or not st.session_state.pdf_thread.is_alive():
+    #         thread = threading.Thread(target=lambda:asyncio.run(getPdfFiles(options,session_copy,collection)))
+    #         thread.start()
+    #         st.session_state.pdf_thread = thread
+    #         st.info("Downaloading pdf files")
+    #     else:
+    #         st.info("Files downloaded")
 
-        input_outout_ui(collection)
+    #     input_outout_ui(collection)
         
+
+def stock_graphs(records, interval: str):
+    df = pd.DataFrame(records)
+
+    # --- 1️⃣ Convert timestamp ---
+    df["timestamp"] = pd.to_numeric(df["timestamp"], errors="coerce")
+    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+
+    # --- 2️⃣ Clean data ---
+    df = df.sort_values("timestamp").drop_duplicates("timestamp", keep="last")
+    df = df[(df["volume"] > 0) & (df["open"] > 0)]
+
+    # --- 3️⃣ Reindex to fill missing candles ---
+    df = df.set_index("timestamp")
+    freq_map = {
+        "1m": "1min", "5m": "5min", "15m": "15min",
+        "1h": "1h", "4h": "4h", "1d": "1d"
+    }
+    if interval not in freq_map:
+        raise ValueError(f"Unsupported interval: {interval}")
+
+    df = df.reset_index().rename(columns={"index": "timestamp"})
+
+    fig = go.Figure()
+
+# OHLC
+    fig.add_trace(go.Ohlc(
+        x=df["timestamp"], open=df["open"], high=df["high"],
+        low=df["low"], close=df["close"], name="Price",
+        showlegend=False,
+    ))
+
+# Volume
+    fig.add_trace(go.Bar(
+        x=df["timestamp"], y=df["volume"], name="Volume", yaxis="y2",
+        showlegend=False,marker={"color": "rgba(128,128,128,0.2)",},
+
+    ))
+
+    fig.update_layout(
+        xaxis_rangeslider_visible=False,
+        xaxis = dict(type = 'category'),
+        yaxis=dict(title="Price"),
+        yaxis2=dict(title="Volume", overlaying="y", side="right", showgrid=False),
+        template="plotly_white",
+        height=600
+    )
+    st.plotly_chart(fig, use_container_width=True, key=f"candlestick_vol_{interval}")
+
+
         
 @st.fragment
 def input_outout_ui(collection):
@@ -449,11 +535,57 @@ def colums_2():
     
     st.divider()
 
-    if "fundamentals" in st.session_state and "companies" in st.session_state:
+    if "fundamentals" in st.session_state and "companies" in st.session_state and "ticks" in st.session_state:
         st.metric(
             label = st.session_state.fundamentals.data.symbol,
             value = st.session_state.fundamentals.data.price,
             delta = f"{st.session_state.fundamentals.data.changePercent:,.4f}%"
+            )
+        col_1,col_2,col_3,col_4 = st.columns(4)
+        col_1.metric(
+            label = "High price",
+            value = st.session_state.ticks.data.high,
+            
+            )
+        col_2.metric(
+            label = "Low price",
+            value = st.session_state.ticks.data.low,
+            
+            )
+        col_3.metric(
+            label = "Trade",
+            value = st.session_state.ticks.data.trades,
+            
+            )
+        col_4.metric(
+            label = "Volume",
+            value = f"{st.session_state.ticks.data.volume:,.2f}",
+            
+            )
+            ##
+            ##
+
+        col_1,col_2,col_3,col_4 = st.columns(4)
+        col_1.metric(
+            label = "bid price",
+            value = st.session_state.ticks.data.bid,
+            
+            )
+        
+        col_3.metric(
+            label = "bid volume",
+            value = f"{st.session_state.ticks.data.bidVol:,.2f}",
+            
+            )
+        col_2.metric(
+            label = "ask price",
+            value = st.session_state.ticks.data.ask,
+            
+            )
+        col_4.metric(
+            label = "ask volume",
+            value = f"{st.session_state.ticks.data.askVol:,.2f}",
+            
             )
         st.text(st.session_state.companies.data.businessDescription)
         col1, col2 ,col3 = st.columns(3)
@@ -475,31 +607,36 @@ def colums_2():
         if key_persons:
                 df = pd.DataFrame(key_persons)
                 st.table(df)
-            
-    if "kline" in st.session_state:
-        records = [kline.model_dump() for kline in st.session_state.kline.data]
-        df = pd.DataFrame(records)
-        df['timestamp'] = pd.to_datetime(df['timestamp'],unit='ms')
-        fig = go.Figure(data=[go.Candlestick(
-            x= df['timestamp'],
-            close=df['close'],
-            open=df['open'],
-            high=df['high'],
-            low=df['low']
-        )])
-        fig.update_xaxes(
-            rangeslider_visible=True,
-            rangebreaks=[
-                dict(bounds=["sat", "mon"]),  # weekends
-                dict(bounds=[4, 9.5], pattern="hour")
-            ]
-        )
+    
+    tab1, tab2, tab3,tab4,tab5,tab6 = st.tabs(["1m", "5m", "15m","1h","4h","1d"])
 
-        
+    with tab1:
+        if "kline_1m" in st.session_state:
+            records = [kline.model_dump() for kline in st.session_state.kline_1m.data]
+            stock_graphs(records=records,interval="1m")
+    with tab2:
+        if "kline_5m" in st.session_state:
+            records = [kline.model_dump() for kline in st.session_state.kline_5m.data]
+            stock_graphs(records=records,interval="5m")
+    with tab3:
+        if "kline_15m" in st.session_state:
+            records = [kline.model_dump() for kline in st.session_state.kline_15m.data]
+            stock_graphs(records=records,interval="15m")
+    with tab4:
+        if "kline_1h" in st.session_state:
+            records = [kline.model_dump() for kline in st.session_state.kline_1h.data]
+            stock_graphs(records=records,interval="1h")
 
+    with tab5:
+        if "kline_4h" in st.session_state:
+            records = [kline.model_dump() for kline in st.session_state.kline_4h.data]
+            stock_graphs(records=records,interval="4h")
 
-        st.plotly_chart(fig)
-        st.bar_chart(df,x='timestamp',y="volume")
+    with tab6:
+        if "kline" in st.session_state:
+            records = [kline.model_dump() for kline in st.session_state.kline.data]
+            stock_graphs(records=records,interval="1d")
+
 
         if "dividend" in st.session_state:
             dividends = [dividend.model_dump() for dividend in st.session_state.dividend.data]
@@ -507,15 +644,19 @@ def colums_2():
             if dividends:
                 df = pd.DataFrame(dividends)
                 st.table(df)
+        if len(pdf_links) > 1:
+            df = pd.DataFrame(pdf_links)
+            st.table(df)
+
 
 def root(collection):
     st.set_page_config(page_title="PSX AI Assistance",layout="wide")
     makeMarketRequest()
-    col1 , col2 = st.columns([0.4,0.6])
-    with col1:
-        colums_1(collection)
-    with col2:
-        colums_2()
+    # col1 , col2 = st.columns([0.1,0.9])
+    # with col1:
+    colums_1(collection)
+    # with col2:
+    colums_2()
 
 @st.cache_resource
 def get_chromddb():
