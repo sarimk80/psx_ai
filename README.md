@@ -147,8 +147,10 @@ collection = client.get_or_create_collection("my_db")
 
 ## 🖼️ UI Preview
 
-<img width="1440" height="900" alt="Screenshot 2025-10-20 at 10 09 28 AM" src="https://github.com/user-attachments/assets/2213d0db-9033-4a3b-bb77-3329ae0302df" />
-<img width="1440" height="900" alt="Screenshot 2025-10-20 at 10 09 38 AM" src="https://github.com/user-attachments/assets/e04e075c-7635-4279-b50d-1a38f86af7e2" />
+<img width="1440" height="900" alt="Screenshot 2025-11-11 at 3 02 13 PM" src="https://github.com/user-attachments/assets/0c74178e-ca4f-4609-b43e-fae2b8071faf" />
+<img width="1440" height="900" alt="Screenshot 2025-11-11 at 3 02 24 PM" src="https://github.com/user-attachments/assets/26582bed-e33c-4236-bfaf-f965cd66f27c" />
+<img width="1440" height="900" alt="Screenshot 2025-11-11 at 3 02 21 PM" src="https://github.com/user-attachments/assets/94a7476d-cfc8-439f-bbb6-617892f78bdd" />
+
 
 
 
