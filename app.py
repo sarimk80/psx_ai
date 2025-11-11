@@ -16,6 +16,8 @@ import chromadb.api
 import pdfplumber
 from multiprocessing import Pool,freeze_support
 import math
+from semantic_chunkers import StatisticalChunker
+import re
 
 baseUrl = "https://psxterminal.com"
 pdfBaseUrl = "https://dps.psx.com.pk"
@@ -180,13 +182,14 @@ Follow these rules carefully:
 
 def embedd_prompt(prompt,collection):
     prompt_embedd = ollama.embed(
-        model='embeddinggemma:latest',
+        model='mxbai-embed-large:latest',
         input= prompt
     )
     result = collection.query(
         query_embeddings=prompt_embedd['embeddings'],
         n_results = 4
     )
+    print(result)
     # Safely access nested data
     if result is not None \
     and 'documents' in result \
@@ -205,7 +208,7 @@ def embedd_text(text,collection):
     
     for i, d in enumerate(text):
         embedd_response = ollama.embed(
-            model="embeddinggemma:latest",
+            model="mxbai-embed-large:latest",
             input=d
         )
         embedding = embedd_response["embeddings"]
@@ -217,9 +220,25 @@ def embedd_text(text,collection):
         print(f"{i} embedding done")
 
     
+def sliding_window(sentences, window_size=3, stride=2):
+    """
+    Create overlapping chunks of sentences using a sliding window.
+    Example: window_size=3, stride=2 → overlap of 1 sentence.
+    """
+    chunks = []
+    for i in range(0, len(sentences) - window_size + 1, stride):
+        chunk = " ".join(sentences[i:i + window_size])
+        chunks.append(chunk)
+    return chunks
+
+
 def chunks_text(text,chunk_size = 1800):
-    words = text.split()
-    return [' '.join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
+    # --- Step 1: Split into sentences ---
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    return sliding_window(sentences=sentences)
+
+    # words = text.split()
+    # return [' '.join(words[i:i + chunk_size]) for i in range(0, len(words), chunk_size)]
 
     
 def summarize_table(table):
@@ -436,21 +455,21 @@ def colums_1(collection):
     if options:
 
         makeApiRequest(options)
-    #     session_copy = {
-    #         "fundamentals": st.session_state.get("fundamentals"),
-    #         "companies": st.session_state.get("companies"),
-    #         "dividend": st.session_state.get("dividend"),
-    #         "kline": st.session_state.get("kline")
-    #     }
-    #     if "pdf_thread" not in st.session_state or not st.session_state.pdf_thread.is_alive():
-    #         thread = threading.Thread(target=lambda:asyncio.run(getPdfFiles(options,session_copy,collection)))
-    #         thread.start()
-    #         st.session_state.pdf_thread = thread
-    #         st.info("Downaloading pdf files")
-    #     else:
-    #         st.info("Files downloaded")
+        session_copy = {
+            "fundamentals": st.session_state.get("fundamentals"),
+            "companies": st.session_state.get("companies"),
+            "dividend": st.session_state.get("dividend"),
+            "kline": st.session_state.get("kline")
+        }
+        if "pdf_thread" not in st.session_state or not st.session_state.pdf_thread.is_alive():
+            thread = threading.Thread(target=lambda:asyncio.run(getPdfFiles(options,session_copy,collection)))
+            thread.start()
+            st.session_state.pdf_thread = thread
+            st.info("Downaloading pdf files")
+        else:
+            st.info("Files downloaded")
 
-    #     input_outout_ui(collection)
+        input_outout_ui(collection)
         
 
 def stock_graphs(records, interval: str):
@@ -519,7 +538,7 @@ def colums_2():
 
     if tickerDetail:
         tickers = [ticker.data.model_dump() for ticker in tickerDetail]
-        lows = [ticker.data.low for ticker in tickerDetail]
+        lows = [ticker.data.high for ticker in tickerDetail]
         row = st.container(horizontal=True)
         with row:
             col = st.columns(len(tickers))
@@ -529,8 +548,7 @@ def colums_2():
                         label= ticker_metric['symbol'],
                         value=f"{ticker_metric['price']:,.2f}",
                         delta=f"{ticker_metric['changePercent']:,.4f}%",
-                        chart_data=lows,
-                        chart_type='area',
+                       
                     )
     
     st.divider()
@@ -572,12 +590,12 @@ def colums_2():
             
             )
         
-        col_3.metric(
+        col_2.metric(
             label = "bid volume",
             value = f"{st.session_state.ticks.data.bidVol:,.2f}",
             
             )
-        col_2.metric(
+        col_3.metric(
             label = "ask price",
             value = st.session_state.ticks.data.ask,
             
@@ -638,15 +656,16 @@ def colums_2():
             stock_graphs(records=records,interval="1d")
 
 
-        if "dividend" in st.session_state:
-            dividends = [dividend.model_dump() for dividend in st.session_state.dividend.data]
+    if "dividend" in st.session_state:
+        dividends = [dividend.model_dump() for dividend in st.session_state.dividend.data]
             
-            if dividends:
-                df = pd.DataFrame(dividends)
-                st.table(df)
-        if len(pdf_links) > 1:
-            df = pd.DataFrame(pdf_links)
+        if dividends:
+            df = pd.DataFrame(dividends)
             st.table(df)
+
+    if len(pdf_links) > 1:
+        df = pd.DataFrame(pdf_links)
+        st.table(df)
 
 
 def root(collection):
