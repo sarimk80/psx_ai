@@ -124,3 +124,6 @@ class TickerDetail(BaseModel):
     success: bool
     data: TickerDetailModel
     timestamp: int
+
+class OutputModel(BaseModel):
+    results:List[str]

@@ -5,7 +5,7 @@ from pandas.core import base
 from plotly.graph_objs import XAxis
 import requests
 import streamlit as st
-from models import Symbols,Companies,Fundamentals,Dividend,KLine,TickerDetail
+from models import Symbols,Companies,Fundamentals,Dividend,KLine,TickerDetail,OutputModel
 import pandas as pd
 from bs4 import BeautifulSoup
 import plotly.graph_objects as go
@@ -180,29 +180,67 @@ Follow these rules carefully:
     print(response['message']['content'])
     return response['message']['content']
 
-def embedd_prompt(prompt,collection):
-    prompt_embedd = ollama.embed(
-        model='mxbai-embed-large:latest',
-        input= prompt
+def embedd_prompt(prompt,collection,ticker):
+
+    data = []
+
+    system_prompt = f"""
+        {ticker}
+        You are a retrieval optimization assistant.
+        Your task is to take a user’s original question and generate three improved, retrieval-optimized questions that will help a Retrieval-Augmented Generation (RAG) system find more precise and contextually relevant information.
+        The improved questions should:
+        Be specific and detailed
+        Use domain-relevant terminology
+        Cover different angles or subtopics of the original question
+        Be clear, factual, and context-rich
+        When the question is about financial reports (e.g., annual reports), use financial and management analysis language.
+        Output exactly three improved questions in a numbered list. Do not include explanations.
+        Donot include any year
+    
+     """
+
+    response = ollama.chat(
+       # model="gpt-oss:20b",
+        model = "gpt-oss:20b-cloud",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ],
+        format= OutputModel.model_json_schema(),
+        think='low'
     )
-    result = collection.query(
-        query_embeddings=prompt_embedd['embeddings'],
-        n_results = 4
-    )
-    print(result)
-    # Safely access nested data
-    if result is not None \
-    and 'documents' in result \
-    and isinstance(result['documents'], list) \
-    and len(result['documents']) > 0 \
-    and isinstance(result['documents'][0], list) \
-    and len(result['documents'][0]) > 0:
-        data = result['documents']
-        return  ai_assistance(data,prompt)
-        
-    else:
-        data = None  # or raise an error/handle missing data
-        return ''
+
+
+    questions = [q.strip() for q in re.split(r'\s*\d+\.\s+', response['message']['content']) if q.strip()]
+    print(questions)
+
+    for contents in questions:
+
+
+        prompt_embedd = ollama.embed(
+            model='mxbai-embed-large:latest',
+            input= ticker + contents
+        )
+        result = collection.query(
+            query_embeddings=prompt_embedd['embeddings'],
+            n_results = 5
+        )
+        print(result)
+        # Safely access nested data
+        if result is not None \
+        and 'documents' in result \
+        and isinstance(result['documents'], list) \
+        and len(result['documents']) > 0 \
+        and isinstance(result['documents'][0], list) \
+        and len(result['documents'][0]) > 0:
+            data.append(result['documents'])
+            print(data)
+            
+            
+        else:
+            data = None  # or raise an error/handle missing data
+            return ''
+    return  ai_assistance(data,prompt)
 
 def embedd_text(text,collection):
     
@@ -215,7 +253,7 @@ def embedd_text(text,collection):
         collection.add(
             ids=[f"{str(i)}"],
             embeddings=embedding,
-            documents=[d]
+            documents=[d],
             )
         print(f"{i} embedding done")
 
@@ -469,7 +507,7 @@ def colums_1(collection):
         else:
             st.info("Files downloaded")
 
-        input_outout_ui(collection)
+        input_outout_ui(collection,options)
         
 
 def stock_graphs(records, interval: str):
@@ -523,12 +561,12 @@ def stock_graphs(records, interval: str):
 
         
 @st.fragment
-def input_outout_ui(collection):
+def input_outout_ui(collection,ticker):
     if prompt := st.chat_input("Enter your question?"):
         st.chat_message("user").markdown(prompt)
         
 
-        response = embedd_prompt(prompt,collection)
+        response = embedd_prompt(prompt,collection,ticker)
 
         
         with st.chat_message("assistant"):
