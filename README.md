@@ -11,7 +11,7 @@ Built with **Streamlit**, **Ollama**, and **ChromaDB**, it enables users to:
 
 ---
 
-https://github.com/user-attachments/assets/9279a6db-db31-4f86-bb93-d08adc48dfa6
+https://github.com/user-attachments/assets/5c503018-37b2-490c-bc6e-a6055f6c6765
 
 
 ## 🚀 Features
@@ -150,6 +150,9 @@ collection = client.get_or_create_collection("my_db")
 <img width="1440" height="900" alt="Screenshot 2025-11-11 at 3 02 13 PM" src="https://github.com/user-attachments/assets/0c74178e-ca4f-4609-b43e-fae2b8071faf" />
 <img width="1440" height="900" alt="Screenshot 2025-11-11 at 3 02 24 PM" src="https://github.com/user-attachments/assets/26582bed-e33c-4236-bfaf-f965cd66f27c" />
 <img width="1440" height="900" alt="Screenshot 2025-11-11 at 3 02 21 PM" src="https://github.com/user-attachments/assets/94a7476d-cfc8-439f-bbb6-617892f78bdd" />
+<img width="1440" height="900" alt="Screenshot 2025-11-13 at 11 29 02 AM" src="https://github.com/user-attachments/assets/12ce28be-edca-474d-9196-cda09d4067c5" />
+
+
 
 
 
